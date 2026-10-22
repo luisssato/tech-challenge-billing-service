@@ -1,0 +1,71 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: billing_mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: tech
+      MONGO_INITDB_ROOT_PASSWORD: challenge_1234
+      MONGO_INITDB_DATABASE: billing_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: billing_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: tech
+      RABBITMQ_DEFAULT_PASS: challenge_1234
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: billing_sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+    profiles:
+      - tools
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: billing_app
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URI: mongodb://tech:challenge_1234@mongo:27017/billing_db?authSource=admin
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: tech
+      RABBITMQ_PASSWORD: challenge_1234
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
+  rabbitmq_data:
+  sonarqube_data:
+  sonarqube_logs:

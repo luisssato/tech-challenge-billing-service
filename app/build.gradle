@@ -1,0 +1,92 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.sonarqube' version '7.2.3.7755'
+	id 'jacoco'
+}
+
+group = 'com.fiap'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+jar {
+	enabled = false
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+	implementation 'org.springframework.boot:spring-boot-starter-amqp'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+	compileOnly 'org.projectlombok:lombok'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-mongodb-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-amqp-test'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+// Classes sem logica de negocio testavel por unidade, fora da conta de cobertura
+def coverageExclusions = ['**/BillingServiceApplication.class']
+
+tasks.named('test') {
+	useJUnitPlatform()
+	finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+		html.required = true
+	}
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: coverageExclusions)
+		}))
+	}
+}
+
+jacocoTestCoverageVerification {
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: coverageExclusions)
+		}))
+	}
+	violationRules {
+		rule {
+			limit {
+				minimum = 0.80
+			}
+		}
+	}
+}
+
+// Faz o "./gradlew build" falhar quando a cobertura ficar abaixo de 80%
+tasks.named('check') {
+	dependsOn jacocoTestCoverageVerification
+}
+
+sonar {
+	properties {
+		property 'sonar.projectKey', 'tech-challenge-billing-service'
+		property 'sonar.host.url', 'http://localhost:9000'
+		property 'sonar.coverage.jacoco.xmlReportPaths',
+				'build/reports/jacoco/test/jacocoTestReport.xml'
+		property 'sonar.coverage.exclusions', '**/BillingServiceApplication.java'
+	}
+}
