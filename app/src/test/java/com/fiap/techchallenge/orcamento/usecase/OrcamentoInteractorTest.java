@@ -46,12 +46,15 @@ public class OrcamentoInteractorTest {
     @Mock
     private TipoServicoGateway tipoServicoGateway;
 
+    @Mock
+    private com.fiap.techchallenge.mensageria.usecase.EventoSaidaGateway eventoSaidaGateway;
+
     private OrcamentoInteractor interactor;
 
     @BeforeEach
     public void setUp() {
         Clock clock = Clock.fixed(INSTANTE, ZoneOffset.UTC);
-        interactor = new OrcamentoInteractor(orcamentoGateway, tipoPecaGateway, tipoServicoGateway, clock);
+        interactor = new OrcamentoInteractor(orcamentoGateway, tipoPecaGateway, tipoServicoGateway, eventoSaidaGateway, clock);
     }
 
     private Orcamento orcamentoExistente(StatusOrcamento status, LocalDateTime criadoEm) {

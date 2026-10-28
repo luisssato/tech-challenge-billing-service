@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billing-config
+  namespace: tech-challenge
+data:
+  AWS_REGION: "us-east-1"
+  DYNAMODB_TABLE_NAME: "tech-challenge-prod-billing-service-table"
+  SWAGGER_BASE_PATH: "/Prod"
+  PAGAMENTO_PROVEDOR: "mock"
+  MERCADO_PAGO_BASE_URL: "https://api.mercadopago.com"
+  SQS_DIAGNOSTICO_CONCLUIDO: "billing-diagnostico-concluido"
+  SQS_EXECUCAO_FALHOU: "billing-execucao-falhou"
+  SQS_OS_CANCELADA: "billing-os-cancelada"
+  SQS_SAIDA: "billing-events"
+  OUTBOX_ENABLED: "true"
+  OUTBOX_INTERVALO_MS: "1000"
+  OUTBOX_LOTE: "50"

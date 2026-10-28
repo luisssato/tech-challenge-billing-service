@@ -1,0 +1,64 @@
+name: CI - Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: "21"
+
+jobs:
+  test:
+    name: Testes e Cobertura (JaCoCo)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "corretto"
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: "gradle"
+
+      - name: Executar Testes e Verificar Cobertura
+        run: ./gradlew :app:test :app:jacocoTestReport :app:jacocoTestCoverageVerification --no-daemon
+
+      - name: Publicar Relatório de Testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: app/build/test-results/test
+          retention-days: 7
+
+      - name: Publicar Relatório de Cobertura JaCoCo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: app/build/reports/jacoco/test/html
+          retention-days: 7
+
+  build-check:
+    name: Validar Build da Imagem Docker
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Testar Build da Imagem (linux/amd64)
+        run: docker build --platform linux/amd64 -t billing-service:check -f app/Dockerfile .
