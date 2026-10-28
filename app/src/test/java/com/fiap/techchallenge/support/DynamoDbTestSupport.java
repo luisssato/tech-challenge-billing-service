@@ -13,6 +13,7 @@ public abstract class DynamoDbTestSupport {
     public static final String GSI_PAYMENT = "payment-id-index";
 
     public static final String FILA_DIAGNOSTICO = "billing-diagnostico-concluido";
+    public static final String FILA_ORCAMENTO_APROVADO = "billing-orcamento-aprovado";
     public static final String FILA_EXECUCAO_FALHOU = "billing-execucao-falhou";
     public static final String FILA_OS_CANCELADA = "billing-os-cancelada";
     public static final String FILA_SAIDA = "billing-events";
@@ -37,7 +38,7 @@ public abstract class DynamoDbTestSupport {
                     "[{\"IndexName\":\"" + GSI_PAYMENT + "\",\"KeySchema\":[{\"AttributeName\":\"paymentId\",\"KeyType\":\"HASH\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}]",
                     "--billing-mode", "PAY_PER_REQUEST");
 
-            for (String fila : List.of(FILA_DIAGNOSTICO, FILA_EXECUCAO_FALHOU, FILA_OS_CANCELADA, FILA_SAIDA)) {
+            for (String fila : List.of(FILA_DIAGNOSTICO, FILA_ORCAMENTO_APROVADO, FILA_EXECUCAO_FALHOU, FILA_OS_CANCELADA, FILA_SAIDA)) {
                 LOCALSTACK.execInContainer("awslocal", "sqs", "create-queue", "--queue-name", fila);
             }
         } catch (Exception e) {
@@ -58,6 +59,7 @@ public abstract class DynamoDbTestSupport {
         registry.add("spring.cloud.aws.sqs.endpoint", () -> endpoint);
 
         registry.add("billing.sqs.diagnostico-concluido", () -> FILA_DIAGNOSTICO);
+        registry.add("billing.sqs.orcamento-aprovado", () -> FILA_ORCAMENTO_APROVADO);
         registry.add("billing.sqs.execucao-falhou", () -> FILA_EXECUCAO_FALHOU);
         registry.add("billing.sqs.os-cancelada", () -> FILA_OS_CANCELADA);
         registry.add("billing.sqs.saida", () -> FILA_SAIDA);

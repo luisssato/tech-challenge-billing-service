@@ -9,6 +9,8 @@ public interface EventoEntradaUseCase {
 
     void processarDiagnosticoConcluido(UUID eventId, Long osId, List<ItemDiagnosticoInputData> pecas, List<ItemDiagnosticoInputData> servicos);
 
+    void processarOrcamentoAprovado(UUID eventId, Long osId);
+
     void processarExecucaoFalhou(UUID eventId, Long osId, String motivo, String detalhe);
 
     void processarOsCancelada(UUID eventId, Long osId, String motivo);

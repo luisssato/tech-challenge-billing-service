@@ -10,6 +10,7 @@ data:
   PAGAMENTO_PROVEDOR: "mock"
   MERCADO_PAGO_BASE_URL: "https://api.mercadopago.com"
   SQS_DIAGNOSTICO_CONCLUIDO: "billing-diagnostico-concluido"
+  SQS_ORCAMENTO_APROVADO: "billing-orcamento-aprovado"
   SQS_EXECUCAO_FALHOU: "billing-execucao-falhou"
   SQS_OS_CANCELADA: "billing-os-cancelada"
   SQS_SAIDA: "billing-events"

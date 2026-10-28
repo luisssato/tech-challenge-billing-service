@@ -31,6 +31,7 @@ class EventoEntradaInteractorTest {
 
     private final OrcamentoUseCase orcamentoUseCase = mock(OrcamentoUseCase.class);
     private final OrcamentoGateway orcamentoGateway = mock(OrcamentoGateway.class);
+    private final com.fiap.techchallenge.pagamento.usecase.PagamentoUseCase pagamentoUseCase = mock(com.fiap.techchallenge.pagamento.usecase.PagamentoUseCase.class);
     private final PagamentoGateway pagamentoGateway = mock(PagamentoGateway.class);
     private final ProcessedEventGateway processedEventGateway = mock(ProcessedEventGateway.class);
     private final EventoSaidaGateway eventoSaidaGateway = mock(EventoSaidaGateway.class);
@@ -41,7 +42,7 @@ class EventoEntradaInteractorTest {
     @BeforeEach
     void setUp() {
         interactor = new EventoEntradaInteractor(
-                orcamentoUseCase, orcamentoGateway, pagamentoGateway,
+                orcamentoUseCase, orcamentoGateway, pagamentoUseCase, pagamentoGateway,
                 processedEventGateway, eventoSaidaGateway, clock);
     }
 
@@ -118,5 +119,18 @@ class EventoEntradaInteractorTest {
         verify(orcamentoGateway).save(orcamento);
         verify(pagamentoGateway).save(pendente);
         verify(processedEventGateway).registrarProcessado(eventId, TipoEvento.OS_CANCELADA, "30");
+    }
+
+    @Test
+    void processarOrcamentoAprovadoAprovaOrcamentoEIniciaPagamento() {
+        UUID eventId = UUID.randomUUID();
+        Long osId = 40L;
+        when(processedEventGateway.jaProcessado(eventId)).thenReturn(false);
+
+        interactor.processarOrcamentoAprovado(eventId, osId);
+
+        verify(orcamentoUseCase).aprovarOrcamento(osId);
+        verify(pagamentoUseCase).iniciarPagamento(osId);
+        verify(processedEventGateway).registrarProcessado(eventId, TipoEvento.ORCAMENTO_APROVADO, "40");
     }
 }

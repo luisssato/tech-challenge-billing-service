@@ -53,6 +53,14 @@ public class EventoEntradaListener {
         eventos.processarDiagnosticoConcluido(envelope.eventId(), osId, pecas, servicos);
     }
 
+    @SqsListener("${billing.sqs.orcamento-aprovado:billing-orcamento-aprovado}")
+    public void aoAprovarOrcamento(String mensagem) {
+        EnvelopeEntrada envelope = ler(mensagem);
+        Long osId = envelope.osId();
+        log.info("[SQS LISTENER] Recebido ORCAMENTO_APROVADO para OS {} (eventId: {})", osId, envelope.eventId());
+        eventos.processarOrcamentoAprovado(envelope.eventId(), osId);
+    }
+
     @SqsListener("${billing.sqs.execucao-falhou:billing-execucao-falhou}")
     public void aoFalharExecucao(String mensagem) {
         EnvelopeEntrada envelope = ler(mensagem);

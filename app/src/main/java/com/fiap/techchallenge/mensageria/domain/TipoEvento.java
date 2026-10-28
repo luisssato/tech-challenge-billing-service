@@ -4,6 +4,7 @@ public final class TipoEvento {
 
     // Eventos consumidos pelo billing-service
     public static final String DIAGNOSTICO_CONCLUIDO = "DIAGNOSTICO_CONCLUIDO";
+    public static final String ORCAMENTO_APROVADO = "ORCAMENTO_APROVADO";
     public static final String EXECUCAO_FALHOU = "EXECUCAO_FALHOU";
     public static final String OS_CANCELADA = "OS_CANCELADA";
 

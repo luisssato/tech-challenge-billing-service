@@ -9,6 +9,7 @@ import com.fiap.techchallenge.orcamento.usecase.OrcamentoUseCase;
 import com.fiap.techchallenge.pagamento.domain.Pagamento;
 import com.fiap.techchallenge.pagamento.domain.StatusPagamento;
 import com.fiap.techchallenge.pagamento.usecase.PagamentoGateway;
+import com.fiap.techchallenge.pagamento.usecase.PagamentoUseCase;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +26,7 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
 
     private final OrcamentoUseCase orcamentoUseCase;
     private final OrcamentoGateway orcamentoGateway;
+    private final PagamentoUseCase pagamentoUseCase;
     private final PagamentoGateway pagamentoGateway;
     private final ProcessedEventGateway processedEventGateway;
     private final EventoSaidaGateway eventoSaidaGateway;
@@ -32,12 +34,14 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
 
     public EventoEntradaInteractor(OrcamentoUseCase orcamentoUseCase,
                                    OrcamentoGateway orcamentoGateway,
+                                   PagamentoUseCase pagamentoUseCase,
                                    PagamentoGateway pagamentoGateway,
                                    ProcessedEventGateway processedEventGateway,
                                    EventoSaidaGateway eventoSaidaGateway,
                                    Clock clock) {
         this.orcamentoUseCase = orcamentoUseCase;
         this.orcamentoGateway = orcamentoGateway;
+        this.pagamentoUseCase = pagamentoUseCase;
         this.pagamentoGateway = pagamentoGateway;
         this.processedEventGateway = processedEventGateway;
         this.eventoSaidaGateway = eventoSaidaGateway;
@@ -66,6 +70,20 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
         this.eventoSaidaGateway.publicarEvento(TipoEvento.ORCAMENTO_GERADO, String.valueOf(osId), payload);
 
         this.processedEventGateway.registrarProcessado(eventId, TipoEvento.DIAGNOSTICO_CONCLUIDO, String.valueOf(osId));
+    }
+
+    @Override
+    public void processarOrcamentoAprovado(UUID eventId, Long osId) {
+        if (processedEventGateway.jaProcessado(eventId)) {
+            log.info("[SAGA] Evento {} já processado anteriormente; ignorando duplicidade.", eventId);
+            return;
+        }
+
+        log.info("[SAGA] Processando ORCAMENTO_APROVADO para OS {}", osId);
+        this.orcamentoUseCase.aprovarOrcamento(osId);
+        this.pagamentoUseCase.iniciarPagamento(osId);
+
+        this.processedEventGateway.registrarProcessado(eventId, TipoEvento.ORCAMENTO_APROVADO, String.valueOf(osId));
     }
 
     @Override

@@ -93,6 +93,11 @@ spec:
                 configMapKeyRef:
                   name: billing-config
                   key: SQS_DIAGNOSTICO_CONCLUIDO
+            - name: SQS_ORCAMENTO_APROVADO
+              valueFrom:
+                configMapKeyRef:
+                  name: billing-config
+                  key: SQS_ORCAMENTO_APROVADO
             - name: SQS_EXECUCAO_FALHOU
               valueFrom:
                 configMapKeyRef:

@@ -89,6 +89,24 @@ class EventoEntradaListenerTest {
     }
 
     @Test
+    void processaOrcamentoAprovadoCorretamente() {
+        UUID eventId = UUID.randomUUID();
+        String json = """
+                {
+                  "eventId": "%s",
+                  "type": "ORCAMENTO_APROVADO",
+                  "payload": {
+                    "osId": 100
+                  }
+                }
+                """.formatted(eventId);
+
+        listener.aoAprovarOrcamento(json);
+
+        verify(useCase).processarOrcamentoAprovado(eventId, 100L);
+    }
+
+    @Test
     void lancaBadRequestQuandoMensagemSemOsId() {
         String json = """
                 {
