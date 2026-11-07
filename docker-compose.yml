@@ -1,0 +1,53 @@
+services:
+  localstack:
+    image: localstack/localstack:3
+    container_name: billing_localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "awslocal", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: billing_sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+    profiles:
+      - tools
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: billing_app
+    ports:
+      - "8080:8080"
+    environment:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      DYNAMODB_ENDPOINT: http://localstack:4566
+      SQS_ENDPOINT: http://localstack:4566
+      DYNAMODB_TABLE_NAME: tech-challenge-prod-billing-service-table
+      PAGAMENTO_PROVEDOR: mock
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+volumes:
+  localstack_data:
+  sonarqube_data:
+  sonarqube_logs:
