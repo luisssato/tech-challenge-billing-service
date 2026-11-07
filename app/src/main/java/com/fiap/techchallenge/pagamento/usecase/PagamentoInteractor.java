@@ -118,9 +118,10 @@ public class PagamentoInteractor implements PagamentoUseCase {
             case RECUSADO -> {
                 log.info("[WEBHOOK] Recusando pagamento da OS {} (transação {})", pagamento.getOsId(), idTransacaoProvedor);
                 pagamento.recusar(idTransacaoProvedor, agora);
-                this.eventoSaidaGateway.publicarEvento(TipoEvento.PAGAMENTO_RECUSADO, String.valueOf(pagamento.getOsId()), Map.of(
-                        "osId", pagamento.getOsId(),
-                        "pagamentoId", idTransacaoProvedor
+                this.eventoSaidaGateway.publicarEvento(TipoEvento.PAGAMENTO_FALHOU, String.valueOf(pagamento.getOsId()), Map.of(
+                        "osId", String.valueOf(pagamento.getOsId()),
+                        "pagamentoId", idTransacaoProvedor,
+                        "motivo", "PAGAMENTO_RECUSADO"
                 ));
             }
             case CANCELADO -> {

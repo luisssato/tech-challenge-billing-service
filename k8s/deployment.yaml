@@ -108,11 +108,16 @@ spec:
                 configMapKeyRef:
                   name: billing-config
                   key: SQS_OS_CANCELADA
-            - name: SQS_SAIDA
+            - name: SNS_SAIDA
               valueFrom:
                 configMapKeyRef:
                   name: billing-config
-                  key: SQS_SAIDA
+                  key: SNS_SAIDA
+            - name: MENSAGERIA_MODO
+              valueFrom:
+                configMapKeyRef:
+                  name: billing-config
+                  key: MENSAGERIA_MODO
             - name: OUTBOX_ENABLED
               valueFrom:
                 configMapKeyRef:

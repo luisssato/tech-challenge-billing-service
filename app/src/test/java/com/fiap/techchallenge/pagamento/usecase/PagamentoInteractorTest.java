@@ -3,6 +3,7 @@ package com.fiap.techchallenge.pagamento.usecase;
 import com.fiap.techchallenge.exception.BadRequestException;
 import com.fiap.techchallenge.exception.ConflictException;
 import com.fiap.techchallenge.exception.NotFoundException;
+import com.fiap.techchallenge.mensageria.domain.TipoEvento;
 import com.fiap.techchallenge.orcamento.domain.ItemOrcamento;
 import com.fiap.techchallenge.orcamento.domain.Orcamento;
 import com.fiap.techchallenge.orcamento.domain.StatusOrcamento;
@@ -186,6 +187,7 @@ class PagamentoInteractorTest {
 
         assertThat(resultado).isPresent();
         assertThat(resultado.get().getStatus()).isEqualTo(StatusPagamento.RECUSADO);
+        verify(eventoSaidaGateway).publicarEvento(eq(TipoEvento.PAGAMENTO_FALHOU), eq("10"), any());
     }
 
     @Test
