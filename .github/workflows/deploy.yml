@@ -148,6 +148,9 @@ jobs:
             kubectl get deployment billing-service -n ${{ env.NAMESPACE }}
             kubectl get pods -n ${{ env.NAMESPACE }} -l app=billing-service -o wide
             kubectl get events -n ${{ env.NAMESPACE }} --sort-by=.lastTimestamp
+            echo "::group::Logs da aplicacao"
+            kubectl logs -n ${{ env.NAMESPACE }} -l app=billing-service --tail=200 --all-containers=true || true
+            echo "::endgroup::"
             exit 1
           fi
 
