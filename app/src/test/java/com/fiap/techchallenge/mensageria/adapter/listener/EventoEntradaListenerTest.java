@@ -11,8 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 class EventoEntradaListenerTest {
 
@@ -104,6 +103,68 @@ class EventoEntradaListenerTest {
         listener.aoAprovarOrcamento(json);
 
         verify(useCase).processarOrcamentoAprovado(eventId, 100L);
+    }
+
+    @Test
+    void consumirFilaOsRoteiaAprovacaoECancelamentoEIgnoraDesconhecido() {
+        UUID id1 = UUID.randomUUID();
+        String msgAprovado = """
+                {"eventId":"%s","type":"ORCAMENTO_APROVADO","payload":{"osId":101}}
+                """.formatted(id1);
+        listener.consumirFilaOs(msgAprovado);
+        verify(useCase).processarOrcamentoAprovado(id1, 101L);
+
+        UUID id2 = UUID.randomUUID();
+        String msgCancelada = """
+                {"eventId":"%s","type":"OS_CANCELADA","payload":{"osId":102,"motivo":"DESISTENCIA"}}
+                """.formatted(id2);
+        listener.consumirFilaOs(msgCancelada);
+        verify(useCase).processarOsCancelada(id2, 102L, "DESISTENCIA");
+
+        UUID id3 = UUID.randomUUID();
+        String msgRejeitado = """
+                {"eventId":"%s","type":"ORCAMENTO_REJEITADO","payload":{"osId":103}}
+                """.formatted(id3);
+        listener.consumirFilaOs(msgRejeitado);
+        verify(useCase).processarOsCancelada(id3, 103L, "CANCELADA");
+
+        String msgIgnorada = """
+                {"eventId":"%s","type":"OS_CRIADA","payload":{"osId":104}}
+                """.formatted(UUID.randomUUID());
+        listener.consumirFilaOs(msgIgnorada);
+    }
+
+    @Test
+    void consumirFilaExecutionRoteiaDiagnosticoEFalhaEIgnoraDesconhecido() {
+        UUID id1 = UUID.randomUUID();
+        String msgDiag = """
+                {
+                  "eventId": "%s",
+                  "type": "DIAGNOSTICO_CONCLUIDO",
+                  "payload": {
+                    "osId": 201,
+                    "itens": [{"tipo": "PECA", "refId": 1, "quantidade": 2}]
+                  }
+                }
+                """.formatted(id1);
+        listener.consumirFilaExecution(msgDiag);
+        verify(useCase).processarDiagnosticoConcluido(eq(id1), eq(201L), any(), any());
+
+        UUID id2 = UUID.randomUUID();
+        String msgFalha = """
+                {
+                  "eventId": "%s",
+                  "type": "EXECUCAO_FALHOU",
+                  "payload": {"osId": 202, "motivo": "FALHA_MOTOR"}
+                }
+                """.formatted(id2);
+        listener.consumirFilaExecution(msgFalha);
+        verify(useCase).processarExecucaoFalhou(id2, 202L, "FALHA_MOTOR", "");
+
+        String msgIgnorada = """
+                {"eventId":"%s","type":"EXECUCAO_INICIADA","payload":{"osId":203}}
+                """.formatted(UUID.randomUUID());
+        listener.consumirFilaExecution(msgIgnorada);
     }
 
     @Test

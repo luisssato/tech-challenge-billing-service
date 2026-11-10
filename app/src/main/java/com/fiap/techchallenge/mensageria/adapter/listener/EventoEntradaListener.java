@@ -25,11 +25,42 @@ public class EventoEntradaListener {
         this.mapper = mapper;
     }
 
-    @SqsListener("${billing.sqs.diagnostico-concluido:billing-diagnostico-concluido}")
-    public void aoConcluirDiagnostico(String mensagem) {
+    @SqsListener("${billing.sqs.fila-os:billing-service-os-events}")
+    public void consumirFilaOs(String mensagem) {
         EnvelopeEntrada envelope = ler(mensagem);
-        Long osId = envelope.osId();
+        String tipo = envelope.type();
+        log.info("[SQS LISTENER - OS] Recebido tipo={} para OS {} (eventId: {})", tipo, envelope.osId(), envelope.eventId());
 
+        if ("ORCAMENTO_APROVADO".equalsIgnoreCase(tipo)) {
+            aoAprovarOrcamento(envelope);
+        } else if ("OS_CANCELADA".equalsIgnoreCase(tipo) || "ORCAMENTO_REJEITADO".equalsIgnoreCase(tipo)) {
+            aoCancelarOs(envelope);
+        } else {
+            log.info("[SQS LISTENER - OS] Evento {} ignorado pelo billing", tipo);
+        }
+    }
+
+    @SqsListener("${billing.sqs.fila-execution:billing-service-execution-events}")
+    public void consumirFilaExecution(String mensagem) {
+        EnvelopeEntrada envelope = ler(mensagem);
+        String tipo = envelope.type();
+        log.info("[SQS LISTENER - EXECUTION] Recebido tipo={} para OS {} (eventId: {})", tipo, envelope.osId(), envelope.eventId());
+
+        if ("DIAGNOSTICO_CONCLUIDO".equalsIgnoreCase(tipo)) {
+            aoConcluirDiagnostico(envelope);
+        } else if ("EXECUCAO_FALHOU".equalsIgnoreCase(tipo)) {
+            aoFalharExecucao(envelope);
+        } else {
+            log.info("[SQS LISTENER - EXECUTION] Evento {} ignorado pelo billing", tipo);
+        }
+    }
+
+    public void aoConcluirDiagnostico(String mensagem) {
+        aoConcluirDiagnostico(ler(mensagem));
+    }
+
+    public void aoConcluirDiagnostico(EnvelopeEntrada envelope) {
+        Long osId = envelope.osId();
         List<ItemDiagnosticoInputData> pecas = new ArrayList<>();
         List<ItemDiagnosticoInputData> servicos = new ArrayList<>();
 
@@ -49,36 +80,42 @@ public class EventoEntradaListener {
             }
         }
 
-        log.info("[SQS LISTENER] Recebido DIAGNOSTICO_CONCLUIDO para OS {} (eventId: {})", osId, envelope.eventId());
+        log.info("[SQS LISTENER] Processando DIAGNOSTICO_CONCLUIDO para OS {} (eventId: {})", osId, envelope.eventId());
         eventos.processarDiagnosticoConcluido(envelope.eventId(), osId, pecas, servicos);
     }
 
-    @SqsListener("${billing.sqs.orcamento-aprovado:billing-orcamento-aprovado}")
     public void aoAprovarOrcamento(String mensagem) {
-        EnvelopeEntrada envelope = ler(mensagem);
+        aoAprovarOrcamento(ler(mensagem));
+    }
+
+    public void aoAprovarOrcamento(EnvelopeEntrada envelope) {
         Long osId = envelope.osId();
-        log.info("[SQS LISTENER] Recebido ORCAMENTO_APROVADO para OS {} (eventId: {})", osId, envelope.eventId());
+        log.info("[SQS LISTENER] Processando ORCAMENTO_APROVADO para OS {} (eventId: {})", osId, envelope.eventId());
         eventos.processarOrcamentoAprovado(envelope.eventId(), osId);
     }
 
-    @SqsListener("${billing.sqs.execucao-falhou:billing-execucao-falhou}")
     public void aoFalharExecucao(String mensagem) {
-        EnvelopeEntrada envelope = ler(mensagem);
+        aoFalharExecucao(ler(mensagem));
+    }
+
+    public void aoFalharExecucao(EnvelopeEntrada envelope) {
         Long osId = envelope.osId();
         String motivo = envelope.payload().path("motivo").asText("FALHA_NA_EXECUCAO");
         String detalhe = envelope.payload().path("detalhe").asText("");
 
-        log.info("[SQS LISTENER] Recebido EXECUCAO_FALHOU para OS {} (eventId: {}, motivo: {})", osId, envelope.eventId(), motivo);
+        log.info("[SQS LISTENER] Processando EXECUCAO_FALHOU para OS {} (eventId: {}, motivo: {})", osId, envelope.eventId(), motivo);
         eventos.processarExecucaoFalhou(envelope.eventId(), osId, motivo, detalhe);
     }
 
-    @SqsListener("${billing.sqs.os-cancelada:billing-os-cancelada}")
     public void aoCancelarOs(String mensagem) {
-        EnvelopeEntrada envelope = ler(mensagem);
+        aoCancelarOs(ler(mensagem));
+    }
+
+    public void aoCancelarOs(EnvelopeEntrada envelope) {
         Long osId = envelope.osId();
         String motivo = envelope.payload().path("motivo").asText("CANCELADA");
 
-        log.info("[SQS LISTENER] Recebido OS_CANCELADA para OS {} (eventId: {})", osId, envelope.eventId());
+        log.info("[SQS LISTENER] Processando OS_CANCELADA para OS {} (eventId: {})", osId, envelope.eventId());
         eventos.processarOsCancelada(envelope.eventId(), osId, motivo);
     }
 

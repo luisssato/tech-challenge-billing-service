@@ -88,26 +88,16 @@ spec:
                 configMapKeyRef:
                   name: billing-config
                   key: SWAGGER_BASE_PATH
-            - name: SQS_DIAGNOSTICO_CONCLUIDO
+            - name: SQS_FILA_OS
               valueFrom:
                 configMapKeyRef:
                   name: billing-config
-                  key: SQS_DIAGNOSTICO_CONCLUIDO
-            - name: SQS_ORCAMENTO_APROVADO
+                  key: SQS_FILA_OS
+            - name: SQS_FILA_EXECUTION
               valueFrom:
                 configMapKeyRef:
                   name: billing-config
-                  key: SQS_ORCAMENTO_APROVADO
-            - name: SQS_EXECUCAO_FALHOU
-              valueFrom:
-                configMapKeyRef:
-                  name: billing-config
-                  key: SQS_EXECUCAO_FALHOU
-            - name: SQS_OS_CANCELADA
-              valueFrom:
-                configMapKeyRef:
-                  name: billing-config
-                  key: SQS_OS_CANCELADA
+                  key: SQS_FILA_EXECUTION
             - name: SNS_SAIDA
               valueFrom:
                 configMapKeyRef:

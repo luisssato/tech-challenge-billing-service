@@ -80,18 +80,6 @@ jobs:
           aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" > /dev/null 2>&1 || \
             aws ecr create-repository --repository-name "${ECR_REPOSITORY}" --image-scanning-configuration scanOnPush=true
 
-      - name: Garantir Recursos de Mensageria (Filas SQS com DLQ e Tópico SNS)
-        run: |
-          for q in billing-diagnostico-concluido billing-orcamento-aprovado billing-execucao-falhou billing-os-cancelada; do
-            aws sqs create-queue --queue-name "${q}-dlq" > /dev/null 2>&1 || true
-            DLQ_URL=$(aws sqs get-queue-url --queue-name "${q}-dlq" --query QueueUrl --output text)
-            DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$DLQ_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text)
-            REDRIVE="{\"deadLetterTargetArn\":\"${DLQ_ARN}\",\"maxReceiveCount\":\"5\"}"
-            aws sqs create-queue --queue-name "$q" \
-              --attributes "$(jq -nc --arg r "$REDRIVE" '{RedrivePolicy:$r}')" > /dev/null 2>&1 || true
-          done
-          aws sns create-topic --name billing-events > /dev/null 2>&1 || true
-
       - name: Build e Push da Imagem Docker
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
