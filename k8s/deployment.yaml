@@ -18,6 +18,7 @@ spec:
       labels:
         app: billing-service
     spec:
+      serviceAccountName: billing-service
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -46,22 +47,6 @@ spec:
                 configMapKeyRef:
                   name: billing-config
                   key: DYNAMODB_TABLE_NAME
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: billing-secrets
-                  key: AWS_ACCESS_KEY_ID
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: billing-secrets
-                  key: AWS_SECRET_ACCESS_KEY
-            - name: AWS_SESSION_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: billing-secrets
-                  key: AWS_SESSION_TOKEN
-                  optional: true
             - name: MERCADO_PAGO_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
