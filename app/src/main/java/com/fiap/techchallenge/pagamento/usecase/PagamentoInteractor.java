@@ -5,12 +5,12 @@ import com.fiap.techchallenge.exception.ConflictException;
 import com.fiap.techchallenge.exception.NotFoundException;
 import com.fiap.techchallenge.mensageria.domain.TipoEvento;
 import com.fiap.techchallenge.mensageria.usecase.EventoSaidaGateway;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import com.fiap.techchallenge.orcamento.domain.Orcamento;
 import com.fiap.techchallenge.orcamento.domain.StatusOrcamento;
 import com.fiap.techchallenge.orcamento.usecase.OrcamentoGateway;
 import com.fiap.techchallenge.pagamento.domain.Pagamento;
 import com.fiap.techchallenge.pagamento.domain.StatusPagamento;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@Slf4j
 public class PagamentoInteractor implements PagamentoUseCase {
 
     private final PagamentoGateway pagamentoGateway;
@@ -70,7 +69,8 @@ public class PagamentoInteractor implements PagamentoUseCase {
             }
             if ((ultimo.getStatus() == StatusPagamento.PENDENTE || ultimo.getStatus() == StatusPagamento.PROCESSANDO)
                     && ultimo.getQrCode() != null) {
-                log.info("Reaproveitando cobrança pendente para a OS {}: transacao={}", osId, ultimo.getIdTransacaoProvedor());
+                BillingEventLogger.pagamento(osId, "iniciar_pagamento", "reaproveitado",
+                        "Cobrança pendente reaproveitada para OS " + osId + " (transação " + ultimo.getIdTransacaoProvedor() + ")");
                 return ultimo;
             }
         }
@@ -80,7 +80,10 @@ public class PagamentoInteractor implements PagamentoUseCase {
                 osId, orcamento.getId(), orcamento.getValorTotal(), "Pagamento Ordem de Serviço " + osId);
 
         pagamento.registrarCobranca(cobranca.idTransacao(), cobranca.qrCode(), cobranca.qrCodeBase64(), agora);
-        return this.pagamentoGateway.save(pagamento);
+        Pagamento salvo = this.pagamentoGateway.save(pagamento);
+        BillingEventLogger.pagamento(osId, "iniciar_pagamento", "criado",
+                "Cobrança iniciada para OS " + osId + " (transação " + cobranca.idTransacao() + ")");
+        return salvo;
     }
 
     @Override
@@ -91,23 +94,28 @@ public class PagamentoInteractor implements PagamentoUseCase {
 
         Optional<Pagamento> pagamentoOpt = this.pagamentoGateway.findByIdTransacaoProvedor(idTransacaoProvedor);
         if (pagamentoOpt.isEmpty()) {
-            log.warn("[WEBHOOK] Nenhuma cobrança local vinculada à transação {}", idTransacaoProvedor);
+            BillingEventLogger.pagamentoAlerta(null, "processar_webhook", "nao_encontrado",
+                    "Nenhuma cobrança local vinculada à transação " + idTransacaoProvedor);
             return Optional.empty();
         }
 
         Pagamento pagamento = pagamentoOpt.get();
         if (pagamento.getStatus() == StatusPagamento.APROVADO) {
-            log.info("[WEBHOOK] Pagamento da OS {} já aprovado anteriormente (idempotente).", pagamento.getOsId());
+            BillingEventLogger.pagamento(pagamento.getOsId(), "processar_webhook", "idempotente",
+                    "Pagamento da OS " + pagamento.getOsId() + " já aprovado anteriormente");
             return Optional.of(pagamento);
         }
 
         ConsultaPagamento consulta = this.provedorPagamentoGateway.consultarPagamento(idTransacaoProvedor);
         LocalDateTime agora = agora();
 
+        String outcome;
+        String mensagem;
         switch (consulta.status()) {
             case APROVADO -> {
-                log.info("[WEBHOOK] Confirmando pagamento da OS {} (transação {})", pagamento.getOsId(), idTransacaoProvedor);
                 pagamento.confirmar(idTransacaoProvedor, agora);
+                outcome = "confirmado";
+                mensagem = "Pagamento confirmado para OS " + pagamento.getOsId() + " (transação " + idTransacaoProvedor + ")";
                 this.eventoSaidaGateway.publicarEvento(TipoEvento.PAGAMENTO_CONFIRMADO, String.valueOf(pagamento.getOsId()), Map.of(
                         "osId", pagamento.getOsId(),
                         "orcamentoId", pagamento.getOrcamentoId() != null ? pagamento.getOrcamentoId() : "",
@@ -116,8 +124,9 @@ public class PagamentoInteractor implements PagamentoUseCase {
                 ));
             }
             case RECUSADO -> {
-                log.info("[WEBHOOK] Recusando pagamento da OS {} (transação {})", pagamento.getOsId(), idTransacaoProvedor);
                 pagamento.recusar(idTransacaoProvedor, agora);
+                outcome = "recusado";
+                mensagem = "Pagamento recusado para OS " + pagamento.getOsId() + " (transação " + idTransacaoProvedor + ")";
                 this.eventoSaidaGateway.publicarEvento(TipoEvento.PAGAMENTO_FALHOU, String.valueOf(pagamento.getOsId()), Map.of(
                         "osId", String.valueOf(pagamento.getOsId()),
                         "pagamentoId", idTransacaoProvedor,
@@ -125,13 +134,19 @@ public class PagamentoInteractor implements PagamentoUseCase {
                 ));
             }
             case CANCELADO -> {
-                log.info("[WEBHOOK] Cancelando pagamento da OS {} (transação {})", pagamento.getOsId(), idTransacaoProvedor);
                 pagamento.cancelar(agora);
+                outcome = "cancelado";
+                mensagem = "Pagamento cancelado para OS " + pagamento.getOsId() + " (transação " + idTransacaoProvedor + ")";
             }
-            default -> log.info("[WEBHOOK] Pagamento da OS {} permanece no status {}", pagamento.getOsId(), pagamento.getStatus());
+            default -> {
+                outcome = "inalterado";
+                mensagem = "Pagamento da OS " + pagamento.getOsId() + " permanece no status " + pagamento.getStatus();
+            }
         }
 
-        return Optional.of(this.pagamentoGateway.save(pagamento));
+        Pagamento salvo = this.pagamentoGateway.save(pagamento);
+        BillingEventLogger.pagamento(pagamento.getOsId(), "processar_webhook", outcome, mensagem);
+        return Optional.of(salvo);
     }
 
     private LocalDateTime agora() {

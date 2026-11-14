@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fiap.techchallenge.exception.BadRequestException;
 import com.fiap.techchallenge.mensageria.usecase.EventoEntradaUseCase;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import com.fiap.techchallenge.orcamento.inputdata.ItemDiagnosticoInputData;
 import io.awspring.cloud.sqs.annotation.SqsListener;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
-@Slf4j
 public class EventoEntradaListener {
 
     private final EventoEntradaUseCase eventos;
@@ -29,14 +28,14 @@ public class EventoEntradaListener {
     public void consumirFilaOs(String mensagem) {
         EnvelopeEntrada envelope = ler(mensagem);
         String tipo = envelope.type();
-        log.info("[SQS LISTENER - OS] Recebido tipo={} para OS {} (eventId: {})", tipo, envelope.osId(), envelope.eventId());
+        BillingEventLogger.eventoRecebido(envelope.osId(), envelope.eventId(), tipo, "billing-service-os-events");
 
         if ("ORCAMENTO_APROVADO".equalsIgnoreCase(tipo)) {
             aoAprovarOrcamento(envelope);
         } else if ("OS_CANCELADA".equalsIgnoreCase(tipo) || "ORCAMENTO_REJEITADO".equalsIgnoreCase(tipo)) {
             aoCancelarOs(envelope);
         } else {
-            log.info("[SQS LISTENER - OS] Evento {} ignorado pelo billing", tipo);
+            BillingEventLogger.eventoIgnorado(envelope.osId(), envelope.eventId(), tipo);
         }
     }
 
@@ -44,14 +43,14 @@ public class EventoEntradaListener {
     public void consumirFilaExecution(String mensagem) {
         EnvelopeEntrada envelope = ler(mensagem);
         String tipo = envelope.type();
-        log.info("[SQS LISTENER - EXECUTION] Recebido tipo={} para OS {} (eventId: {})", tipo, envelope.osId(), envelope.eventId());
+        BillingEventLogger.eventoRecebido(envelope.osId(), envelope.eventId(), tipo, "billing-service-execution-events");
 
         if ("DIAGNOSTICO_CONCLUIDO".equalsIgnoreCase(tipo)) {
             aoConcluirDiagnostico(envelope);
         } else if ("EXECUCAO_FALHOU".equalsIgnoreCase(tipo)) {
             aoFalharExecucao(envelope);
         } else {
-            log.info("[SQS LISTENER - EXECUTION] Evento {} ignorado pelo billing", tipo);
+            BillingEventLogger.eventoIgnorado(envelope.osId(), envelope.eventId(), tipo);
         }
     }
 
@@ -80,8 +79,8 @@ public class EventoEntradaListener {
             }
         }
 
-        log.info("[SQS LISTENER] Processando DIAGNOSTICO_CONCLUIDO para OS {} (eventId: {})", osId, envelope.eventId());
-        eventos.processarDiagnosticoConcluido(envelope.eventId(), osId, pecas, servicos);
+        executarProcessamento(envelope, () ->
+                eventos.processarDiagnosticoConcluido(envelope.eventId(), osId, pecas, servicos));
     }
 
     public void aoAprovarOrcamento(String mensagem) {
@@ -90,8 +89,8 @@ public class EventoEntradaListener {
 
     public void aoAprovarOrcamento(EnvelopeEntrada envelope) {
         Long osId = envelope.osId();
-        log.info("[SQS LISTENER] Processando ORCAMENTO_APROVADO para OS {} (eventId: {})", osId, envelope.eventId());
-        eventos.processarOrcamentoAprovado(envelope.eventId(), osId);
+        executarProcessamento(envelope, () ->
+                eventos.processarOrcamentoAprovado(envelope.eventId(), osId));
     }
 
     public void aoFalharExecucao(String mensagem) {
@@ -103,8 +102,8 @@ public class EventoEntradaListener {
         String motivo = envelope.payload().path("motivo").asText("FALHA_NA_EXECUCAO");
         String detalhe = envelope.payload().path("detalhe").asText("");
 
-        log.info("[SQS LISTENER] Processando EXECUCAO_FALHOU para OS {} (eventId: {}, motivo: {})", osId, envelope.eventId(), motivo);
-        eventos.processarExecucaoFalhou(envelope.eventId(), osId, motivo, detalhe);
+        executarProcessamento(envelope, () ->
+                eventos.processarExecucaoFalhou(envelope.eventId(), osId, motivo, detalhe));
     }
 
     public void aoCancelarOs(String mensagem) {
@@ -115,24 +114,55 @@ public class EventoEntradaListener {
         Long osId = envelope.osId();
         String motivo = envelope.payload().path("motivo").asText("CANCELADA");
 
-        log.info("[SQS LISTENER] Processando OS_CANCELADA para OS {} (eventId: {})", osId, envelope.eventId());
-        eventos.processarOsCancelada(envelope.eventId(), osId, motivo);
+        executarProcessamento(envelope, () ->
+                eventos.processarOsCancelada(envelope.eventId(), osId, motivo));
+    }
+
+    private void executarProcessamento(EnvelopeEntrada envelope, Runnable acao) {
+        try {
+            acao.run();
+        } catch (RuntimeException e) {
+            BillingEventLogger.falhaProcessamento(envelope.osId(), envelope.eventId(), envelope.type(), e.getMessage());
+            throw e;
+        }
     }
 
     private EnvelopeEntrada ler(String mensagem) {
+        String correlationIdExtraido = null;
+        Long osIdExtraido = null;
+        String eventIdExtraido = null;
+        String tipoExtraido = null;
         try {
             JsonNode raiz = mapper.readTree(mensagem);
-            UUID eventId = UUID.fromString(raiz.path("eventId").asText());
+            correlationIdExtraido = textoOuNulo(raiz.path("correlationId"));
+            eventIdExtraido = textoOuNulo(raiz.path("eventId"));
+            tipoExtraido = textoOuNulo(raiz.path("type"));
             JsonNode payload = raiz.path("payload");
+            if (payload.hasNonNull("osId") && payload.path("osId").canConvertToLong()) {
+                osIdExtraido = payload.path("osId").asLong();
+            }
+
+            UUID eventId = UUID.fromString(raiz.path("eventId").asText());
             if (payload.isMissingNode() || !payload.hasNonNull("osId")) {
                 throw new BadRequestException("Mensagem inválida: payload.osId ausente!");
             }
             long osId = payload.path("osId").asLong();
             return new EnvelopeEntrada(eventId, raiz.path("type").asText(""), osId, payload);
+        } catch (BadRequestException e) {
+            BillingEventLogger.eventoInvalido(correlationIdExtraido, osIdExtraido, eventIdExtraido, tipoExtraido, e.getMessage());
+            throw e;
         } catch (IllegalArgumentException | com.fasterxml.jackson.core.JacksonException e) {
-            log.error("[SQS LISTENER] Mensagem com formato inválido: {}", mensagem, e);
+            BillingEventLogger.eventoInvalido(correlationIdExtraido, osIdExtraido, eventIdExtraido, tipoExtraido, e.getMessage());
             throw new BadRequestException("Mensagem SQS inválida: " + e.getMessage());
         }
+    }
+
+    private static String textoOuNulo(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String valor = node.asText("");
+        return valor.isBlank() ? null : valor;
     }
 
     record EnvelopeEntrada(UUID eventId, String type, Long osId, JsonNode payload) {}

@@ -3,7 +3,7 @@ package com.fiap.techchallenge.mensageria.adapter.scheduler;
 import com.fiap.techchallenge.mensageria.domain.OutboxEvent;
 import com.fiap.techchallenge.mensageria.usecase.MensagemPublisher;
 import com.fiap.techchallenge.mensageria.usecase.OutboxEventGateway;
-import lombok.extern.slf4j.Slf4j;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,7 +17,6 @@ import java.util.List;
 @Component
 @EnableScheduling
 @ConditionalOnProperty(name = "billing.outbox.enabled", havingValue = "true", matchIfMissing = true)
-@Slf4j
 public class OutboxPublisherScheduler {
 
     private final OutboxEventGateway outboxGateway;
@@ -42,10 +41,24 @@ public class OutboxPublisherScheduler {
                 publisher.publicar(evento);
                 evento.marcarComoEnviado(LocalDateTime.now());
                 outboxGateway.salvar(evento);
+                BillingEventLogger.eventoPublicado(
+                        evento.getAggregateId(),
+                        evento.getId(),
+                        evento.getType(),
+                        "reenviar_outbox",
+                        "aceito_broker",
+                        "Evento outbox reenviado e aceito pelo broker");
             } catch (Exception e) {
-                log.error("[OUTBOX SCHEDULER] Falha ao processar evento outbox {}: {}", evento.getId(), e.getMessage());
                 evento.marcarComoFalha();
                 outboxGateway.salvar(evento);
+                BillingEventLogger.falhaPublicacao(
+                        evento.getAggregateId(),
+                        evento.getId(),
+                        evento.getType(),
+                        "reenviar_outbox",
+                        "falha",
+                        "Falha ao processar evento outbox " + evento.getId() + ": " + e.getMessage(),
+                        true);
             }
         }
     }

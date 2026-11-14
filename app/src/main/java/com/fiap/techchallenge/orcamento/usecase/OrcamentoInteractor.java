@@ -5,12 +5,12 @@ import com.fiap.techchallenge.exception.ConflictException;
 import com.fiap.techchallenge.exception.NotFoundException;
 import com.fiap.techchallenge.mensageria.domain.TipoEvento;
 import com.fiap.techchallenge.mensageria.usecase.EventoSaidaGateway;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import com.fiap.techchallenge.orcamento.domain.ItemOrcamento;
 import com.fiap.techchallenge.orcamento.domain.Orcamento;
 import com.fiap.techchallenge.orcamento.inputdata.ItemDiagnosticoInputData;
 import com.fiap.techchallenge.peca.usecase.TipoPecaGateway;
 import com.fiap.techchallenge.servico.usecase.TipoServicoGateway;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@Slf4j
 public class OrcamentoInteractor implements OrcamentoUseCase {
 
     private final OrcamentoGateway orcamentoGateway;
@@ -53,7 +52,8 @@ public class OrcamentoInteractor implements OrcamentoUseCase {
 
         Optional<Orcamento> existente = this.orcamentoGateway.findByOsId(osId);
         if (existente.isPresent()) {
-            log.info("Orçamento da OS {} já existe (status {}); geração ignorada.", osId, existente.get().getStatus());
+            BillingEventLogger.orcamento(osId, "gerar_orcamento", "ignorado",
+                    "Orçamento da OS " + osId + " já existe (status " + existente.get().getStatus() + "); geração ignorada");
             return existente.get();
         }
 
@@ -72,7 +72,9 @@ public class OrcamentoInteractor implements OrcamentoUseCase {
         }
 
         Orcamento orcamento = Orcamento.gerar(osId, itens, agora());
-        return this.orcamentoGateway.save(orcamento);
+        Orcamento salvo = this.orcamentoGateway.save(orcamento);
+        BillingEventLogger.orcamento(osId, "gerar_orcamento", "sucesso", "Orçamento gerado para OS " + osId);
+        return salvo;
     }
 
     @Override
@@ -83,13 +85,17 @@ public class OrcamentoInteractor implements OrcamentoUseCase {
         if (orcamento.estaVencido(agora)) {
             orcamento.expirar(agora);
             this.orcamentoGateway.save(orcamento);
+            BillingEventLogger.orcamentoAlerta(osId, "aprovar_orcamento", "expirado",
+                    "Orçamento da OS " + osId + " expirado em " + orcamento.getDataExpiracao());
             throw new ConflictException(
                     "Erro: O orçamento da Ordem de Serviço %d expirou em %s!".formatted(osId,
                             orcamento.getDataExpiracao()));
         }
 
         orcamento.aprovar(agora);
-        return this.orcamentoGateway.save(orcamento);
+        Orcamento salvo = this.orcamentoGateway.save(orcamento);
+        BillingEventLogger.orcamento(osId, "aprovar_orcamento", "sucesso", "Orçamento aprovado para OS " + osId);
+        return salvo;
     }
 
     @Override
@@ -97,6 +103,7 @@ public class OrcamentoInteractor implements OrcamentoUseCase {
         Orcamento orcamento = buscarOuFalhar(osId);
         orcamento.rejeitar(agora());
         Orcamento salvo = this.orcamentoGateway.save(orcamento);
+        BillingEventLogger.orcamento(osId, "rejeitar_orcamento", "sucesso", "Orçamento rejeitado para OS " + osId);
         this.eventoSaidaGateway.publicarEvento(TipoEvento.ORCAMENTO_REJEITADO, String.valueOf(osId), Map.of(
                 "osId", osId,
                 "motivo", "REJEITADO_PELO_CLIENTE"));
@@ -106,7 +113,8 @@ public class OrcamentoInteractor implements OrcamentoUseCase {
     private Orcamento buscarOuFalhar(Long osId) {
         return this.orcamentoGateway.findByOsId(osId)
                 .orElseThrow(() -> {
-                    log.warn("Orçamento da OS {} não encontrado!", osId);
+                    BillingEventLogger.orcamentoAlerta(osId, "buscar_orcamento", "nao_encontrado",
+                            "Orçamento da OS " + osId + " não encontrado");
                     return new NotFoundException("Orçamento da ordem de serviço de id " + osId + " não encontrado!");
                 });
     }

@@ -7,14 +7,13 @@ import com.fiap.techchallenge.mensageria.domain.OutboxEvent;
 import com.fiap.techchallenge.mensageria.usecase.EventoSaidaGateway;
 import com.fiap.techchallenge.mensageria.usecase.MensagemPublisher;
 import com.fiap.techchallenge.mensageria.usecase.OutboxEventGateway;
-import lombok.extern.slf4j.Slf4j;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
 @Component
-@Slf4j
 public class EventoSaidaGatewayImpl implements EventoSaidaGateway {
 
     private final OutboxEventGateway outboxEventGateway;
@@ -41,9 +40,22 @@ public class EventoSaidaGatewayImpl implements EventoSaidaGateway {
                     mensagemPublisher.publicar(evento);
                     evento.marcarComoEnviado(LocalDateTime.now());
                     outboxEventGateway.salvar(evento);
-                    log.info("[SAGA SAÍDA] Evento {} (id: {}) publicado no SQS com sucesso.", tipo, evento.getId());
+                    BillingEventLogger.eventoPublicado(
+                            correlationId,
+                            evento.getId(),
+                            tipo,
+                            "publicar_evento_saga",
+                            "aceito_broker",
+                            "Evento " + tipo + " aceito pelo broker para entrega (processamento no destino não confirmado)");
                 } catch (Exception e) {
-                    log.warn("[SAGA SAÍDA] Falha ao publicar evento {} diretamente no SQS; outbox agendada tratará: {}", tipo, e.getMessage());
+                    BillingEventLogger.falhaPublicacao(
+                            correlationId,
+                            evento.getId(),
+                            tipo,
+                            "publicar_evento_saga",
+                            "pendente_outbox",
+                            "Falha ao publicar evento " + tipo + " imediatamente; mantido no outbox para retentativa: " + e.getMessage(),
+                            false);
                 }
             }
         } catch (JsonProcessingException e) {

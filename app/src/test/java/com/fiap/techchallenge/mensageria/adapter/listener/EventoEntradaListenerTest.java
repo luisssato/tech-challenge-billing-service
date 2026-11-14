@@ -184,4 +184,20 @@ class EventoEntradaListenerTest {
     void lancaBadRequestQuandoJsonInvalido() {
         assertThrows(BadRequestException.class, () -> listener.aoCancelarOs("invalido"));
     }
+
+    @Test
+    void propagaExcecaoDeProcessamentoDoUseCase() {
+        UUID eventId = UUID.randomUUID();
+        doThrow(new RuntimeException("Peça 5 não cadastrada"))
+                .when(useCase).processarOrcamentoAprovado(eventId, 100L);
+        String json = """
+                {
+                  "eventId": "%s",
+                  "type": "ORCAMENTO_APROVADO",
+                  "payload": { "osId": 100 }
+                }
+                """.formatted(eventId);
+
+        assertThrows(RuntimeException.class, () -> listener.aoAprovarOrcamento(json));
+    }
 }
