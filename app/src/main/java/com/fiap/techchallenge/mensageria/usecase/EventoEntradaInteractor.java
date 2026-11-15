@@ -1,6 +1,7 @@
 package com.fiap.techchallenge.mensageria.usecase;
 
 import com.fiap.techchallenge.mensageria.domain.TipoEvento;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import com.fiap.techchallenge.orcamento.domain.Orcamento;
 import com.fiap.techchallenge.orcamento.domain.StatusOrcamento;
 import com.fiap.techchallenge.orcamento.inputdata.ItemDiagnosticoInputData;
@@ -10,7 +11,6 @@ import com.fiap.techchallenge.pagamento.domain.Pagamento;
 import com.fiap.techchallenge.pagamento.domain.StatusPagamento;
 import com.fiap.techchallenge.pagamento.usecase.PagamentoGateway;
 import com.fiap.techchallenge.pagamento.usecase.PagamentoUseCase;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -21,7 +21,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@Slf4j
 public class EventoEntradaInteractor implements EventoEntradaUseCase {
 
     private final OrcamentoUseCase orcamentoUseCase;
@@ -53,12 +52,9 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
                                             List<ItemDiagnosticoInputData> pecas,
                                             List<ItemDiagnosticoInputData> servicos) {
         if (processedEventGateway.jaProcessado(eventId)) {
-            log.info("[SAGA] Evento {} já processado anteriormente; ignorando duplicidade.", eventId);
+            BillingEventLogger.eventoDuplicado(osId, eventId, TipoEvento.DIAGNOSTICO_CONCLUIDO);
             return;
         }
-
-        log.info("[SAGA] Processando DIAGNOSTICO_CONCLUIDO para OS {} com {} peças e {} serviços",
-                osId, pecas.size(), servicos.size());
 
         Orcamento orcamento = this.orcamentoUseCase.gerarOrcamento(osId, pecas, servicos);
 
@@ -70,39 +66,44 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
         this.eventoSaidaGateway.publicarEvento(TipoEvento.ORCAMENTO_GERADO, String.valueOf(osId), payload);
 
         this.processedEventGateway.registrarProcessado(eventId, TipoEvento.DIAGNOSTICO_CONCLUIDO, String.valueOf(osId));
+        BillingEventLogger.eventoProcessado(osId, eventId, TipoEvento.DIAGNOSTICO_CONCLUIDO,
+                "processar_diagnostico", "sucesso",
+                String.format("Diagnóstico processado para OS %d com %d peças e %d serviços", osId, pecas.size(), servicos.size()));
     }
 
     @Override
     public void processarOrcamentoAprovado(UUID eventId, Long osId) {
         if (processedEventGateway.jaProcessado(eventId)) {
-            log.info("[SAGA] Evento {} já processado anteriormente; ignorando duplicidade.", eventId);
+            BillingEventLogger.eventoDuplicado(osId, eventId, TipoEvento.ORCAMENTO_APROVADO);
             return;
         }
 
-        log.info("[SAGA] Processando ORCAMENTO_APROVADO para OS {}", osId);
         this.orcamentoUseCase.aprovarOrcamento(osId);
         this.pagamentoUseCase.iniciarPagamento(osId);
 
         this.processedEventGateway.registrarProcessado(eventId, TipoEvento.ORCAMENTO_APROVADO, String.valueOf(osId));
+        BillingEventLogger.eventoProcessado(osId, eventId, TipoEvento.ORCAMENTO_APROVADO,
+                "aprovar_orcamento_e_iniciar_pagamento", "sucesso",
+                "Orçamento aprovado e cobrança iniciada para OS " + osId);
     }
 
     @Override
     public void processarExecucaoFalhou(UUID eventId, Long osId, String motivo, String detalhe) {
         if (processedEventGateway.jaProcessado(eventId)) {
-            log.info("[SAGA] Evento {} já processado anteriormente; ignorando duplicidade.", eventId);
+            BillingEventLogger.eventoDuplicado(osId, eventId, TipoEvento.EXECUCAO_FALHOU);
             return;
         }
 
-        log.warn("[SAGA] Processando compensação para EXECUCAO_FALHOU na OS {}. Motivo: {} - {}", osId, motivo, detalhe);
         LocalDateTime agora = LocalDateTime.now(clock);
+        boolean pagamentoEstornado = false;
 
         Optional<Pagamento> pagamentoOpt = this.pagamentoGateway.findUltimoByOsId(osId);
         if (pagamentoOpt.isPresent()) {
             Pagamento pagamento = pagamentoOpt.get();
             if (pagamento.getStatus() == StatusPagamento.APROVADO) {
-                log.info("[SAGA COMPENSAÇÃO] Estornando pagamento aprovado da OS {}", osId);
                 pagamento.estornar(agora);
                 this.pagamentoGateway.save(pagamento);
+                pagamentoEstornado = true;
 
                 Map<String, Object> payloadEstorno = Map.of(
                         "osId", osId,
@@ -120,16 +121,23 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
         });
 
         this.processedEventGateway.registrarProcessado(eventId, TipoEvento.EXECUCAO_FALHOU, String.valueOf(osId));
+        String motivoTexto = motivo != null ? motivo : "não informado";
+        if (pagamentoEstornado) {
+            BillingEventLogger.estornoPagamento(osId, eventId, TipoEvento.EXECUCAO_FALHOU,
+                    "estornado", String.format("Pagamento estornado após falha na execução da OS %d (motivo: %s)", osId, motivoTexto));
+        } else {
+            BillingEventLogger.estornoPagamento(osId, eventId, TipoEvento.EXECUCAO_FALHOU,
+                    "nao_aplicavel", String.format("Compensação processada sem necessidade de estorno para OS %d (motivo: %s)", osId, motivoTexto));
+        }
     }
 
     @Override
     public void processarOsCancelada(UUID eventId, Long osId, String motivo) {
         if (processedEventGateway.jaProcessado(eventId)) {
-            log.info("[SAGA] Evento {} já processado anteriormente; ignorando duplicidade.", eventId);
+            BillingEventLogger.eventoDuplicado(osId, eventId, TipoEvento.OS_CANCELADA);
             return;
         }
 
-        log.info("[SAGA] Processando OS_CANCELADA para OS {}. Motivo: {}", osId, motivo);
         LocalDateTime agora = LocalDateTime.now(clock);
 
         this.orcamentoGateway.findByOsId(osId).ifPresent(orcamento -> {
@@ -147,5 +155,9 @@ public class EventoEntradaInteractor implements EventoEntradaUseCase {
         });
 
         this.processedEventGateway.registrarProcessado(eventId, TipoEvento.OS_CANCELADA, String.valueOf(osId));
+        String motivoTexto = motivo != null ? motivo : "não informado";
+        BillingEventLogger.eventoProcessado(osId, eventId, TipoEvento.OS_CANCELADA,
+                "cancelar_os", "sucesso",
+                String.format("Cancelamento processado para OS %d (motivo: %s)", osId, motivoTexto));
     }
 }

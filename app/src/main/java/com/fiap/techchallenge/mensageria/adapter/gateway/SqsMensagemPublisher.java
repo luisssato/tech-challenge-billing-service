@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fiap.techchallenge.mensageria.domain.OutboxEvent;
 import com.fiap.techchallenge.mensageria.domain.TipoEvento;
 import com.fiap.techchallenge.mensageria.usecase.MensagemPublisher;
-import lombok.extern.slf4j.Slf4j;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @ConditionalOnProperty(name = "billing.mensageria.modo", havingValue = "sqs", matchIfMissing = true)
-@Slf4j
 public class SqsMensagemPublisher implements MensagemPublisher {
 
     private static final int VERSAO = 1;
@@ -79,12 +78,23 @@ public class SqsMensagemPublisher implements MensagemPublisher {
             for (String nomeFila : filasDestino) {
                 String url = obterUrlDaFila(nomeFila);
                 sqs.sendMessage(r -> r.queueUrl(url).messageBody(corpo)).join();
-                log.info("[SQS PUBLISHER] Mensagem enviada para {}: tipo={}, correlationId={}",
-                        nomeFila, evento.getType(), evento.getAggregateId());
+                BillingEventLogger.eventoPublicado(
+                        evento.getAggregateId(),
+                        evento.getId(),
+                        evento.getType(),
+                        "publicar_sqs",
+                        "aceito_broker",
+                        "Mensagem aceita pela fila SQS " + nomeFila);
             }
         } catch (Exception e) {
-            log.error("[SQS PUBLISHER] Erro ao enviar mensagem tipo={} para filas destino: {}",
-                    evento.getType(), e.getMessage());
+            BillingEventLogger.falhaPublicacao(
+                    evento.getAggregateId(),
+                    evento.getId(),
+                    evento.getType(),
+                    "publicar_sqs",
+                    "falha",
+                    "Erro ao enviar mensagem para filas SQS de destino: " + e.getMessage(),
+                    true);
             throw new RuntimeException("Falha ao publicar evento no SQS: " + e.getMessage(), e);
         }
     }

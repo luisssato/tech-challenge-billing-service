@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fiap.techchallenge.mensageria.domain.OutboxEvent;
 import com.fiap.techchallenge.mensageria.usecase.MensagemPublisher;
+import com.fiap.techchallenge.observabilidade.BillingEventLogger;
 import io.awspring.cloud.sns.core.SnsTemplate;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.messaging.support.MessageBuilder;
@@ -15,7 +15,6 @@ import java.time.ZoneOffset;
 
 @Component
 @ConditionalOnProperty(name = "billing.mensageria.modo", havingValue = "sns")
-@Slf4j
 public class SnsMensagemPublisher implements MensagemPublisher {
 
     private static final int VERSAO = 1;
@@ -49,10 +48,22 @@ public class SnsMensagemPublisher implements MensagemPublisher {
                     .setHeader("type", evento.getType())
                     .setHeader("correlationId", String.valueOf(evento.getAggregateId()))
                     .build());
-            log.info("[SNS PUBLISHER] Mensagem enviada para tópico {}: tipo={}, correlationId={}",
-                    nomeDoTopico, evento.getType(), evento.getAggregateId());
+            BillingEventLogger.eventoPublicado(
+                    evento.getAggregateId(),
+                    evento.getId(),
+                    evento.getType(),
+                    "publicar_sns",
+                    "aceito_broker",
+                    "Mensagem aceita pelo tópico SNS " + nomeDoTopico);
         } catch (Exception e) {
-            log.error("[SNS PUBLISHER] Erro ao enviar mensagem para {}: {}", nomeDoTopico, e.getMessage());
+            BillingEventLogger.falhaPublicacao(
+                    evento.getAggregateId(),
+                    evento.getId(),
+                    evento.getType(),
+                    "publicar_sns",
+                    "falha",
+                    "Erro ao enviar mensagem para tópico SNS " + nomeDoTopico + ": " + e.getMessage(),
+                    true);
             throw new RuntimeException("Falha ao publicar evento no SNS: " + e.getMessage(), e);
         }
     }
