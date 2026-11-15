@@ -42,6 +42,7 @@ app/
 │   ├── peca/           catálogo de tipos de peças e preços
 │   ├── servico/        catálogo de tipos de serviços e preços
 │   ├── mensageria/     listeners SQS, outbox pattern, publisher SNS/SQS e idempotência
+│   ├── observabilidade/ logs estruturados padronizados da saga (BillingEventLogger)
 │   ├── sequence/       gerador de sequências atômicas no DynamoDB
 │   ├── config/         configurações de DynamoDB, Jackson, Swagger e Time
 │   ├── exception/      tratamento global de exceções
@@ -181,15 +182,29 @@ Relatório completo gerado em: `app/build/reports/jacoco/test/html/index.html`.
 
 ---
 
+## Observabilidade e Padrão de Logs
+
+Os logs são emitidos em formato **JSON estruturado** (Logstash) no `stdout`, coletados pelo agente do **New Relic** no cluster Kubernetes, contendo os campos canônicos para rastreamento ponta a ponta da Ordem de Serviço:
+
+- `service`: `"billing-service"`
+- `correlationId`: identificador da OS como texto
+- `orderId`: identificador numérico da OS
+- `eventId` e `eventType`: identificadores do evento consumido ou publicado
+- `operation` e `outcome`: operação executada e resultado concluído (`recebido`, `ignorado`, `duplicado`, `sucesso`, `estornado`, `nao_aplicavel`, `aceito_broker`, `pendente_outbox`, `falha`)
+
+---
+
 ## Endpoints da API (Swagger / OpenAPI)
 
-O microsserviço expõe endpoints REST documentados via OpenAPI 3. Quando integrado via API Gateway, as rotas recebem o prefixo `/billing/`:
+O microsserviço expõe endpoints REST documentados via OpenAPI 3 (`/swagger-ui/index.html` e `/v3/api-docs`):
 
-- `GET /api/orcamentos/os/{osId}`: Consulta o orçamento detalhado de uma OS.
-- `GET /api/pagamentos/os/{osId}`: Consulta o status do pagamento e dados do QR Code.
-- `POST /api/pagamentos/os/{osId}/iniciar`: Dispara manualmente o início da cobrança Pix.
-- `POST /api/pagamentos/webhook`: Endpoint público para recepção de notificações de pagamento do Mercado Pago.
-- `GET /api/pecas` e `POST /api/pecas`: Consulta e cadastro de tipos de peças do catálogo.
-- `GET /api/servicos` e `POST /api/servicos`: Consulta e cadastro de tipos de serviços do catálogo.
+- `GET /api/orcamento/{osId}`: Consulta o orçamento detalhado de uma OS.
+- `POST /api/orcamento/{osId}/aprovar`: Aprova manualmente um orçamento gerado.
+- `POST /api/orcamento/{osId}/rejeitar`: Rejeita um orçamento e publica `ORCAMENTO_REJEITADO`.
+- `GET /api/pagamento/{osId}`: Consulta o status do pagamento e dados do QR Code Pix.
+- `POST /api/pagamento/{osId}/iniciar`: Dispara manualmente o início da cobrança Pix.
+- `POST /api/pagamento/webhook`: Endpoint para recepção de notificações de pagamento do Mercado Pago.
+- `GET /api/tipoPeca`, `POST /api/tipoPeca`, `GET/PUT/DELETE /api/tipoPeca/{id}`: Catálogo de tipos de peças.
+- `GET /api/tipo-servico`, `POST /api/tipo-servico`, `GET/PUT/DELETE /api/tipo-servico/{id}`: Catálogo de tipos de serviços.
 - `GET /actuator/health`: Health check, liveness e readiness probes do Kubernetes.
 
