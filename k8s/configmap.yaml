@@ -7,7 +7,7 @@ data:
   AWS_REGION: "us-east-1"
   DYNAMODB_TABLE_NAME: "tech-challenge-prod-billing-service-table"
   SWAGGER_BASE_PATH: "/Prod"
-  PAGAMENTO_PROVEDOR: "mock"
+  PAGAMENTO_PROVEDOR: "mercadopago"
   MERCADO_PAGO_BASE_URL: "https://api.mercadopago.com"
   SQS_FILA_OS: "billing-service-os-events"
   SQS_FILA_EXECUTION: "billing-service-execution-events"
